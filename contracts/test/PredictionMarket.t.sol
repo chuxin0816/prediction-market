@@ -113,4 +113,61 @@ contract PredictionMarketTest is Test {
         vm.expectRevert("PredictionMarket: end time must be in future");
         market.createMarket("Test?", 2, block.timestamp - 1, block.timestamp + 2 days);
     }
+
+    function _setupMarketWithDeposit() internal returns (uint256) {
+        vm.prank(owner);
+        uint256 marketId = market.createMarket("Test?", 2, block.timestamp + 1 days, block.timestamp + 2 days);
+
+        vm.startPrank(alice);
+        usdc.approve(address(market), 1000e6);
+        market.deposit(1000e6);
+        vm.stopPrank();
+
+        return marketId;
+    }
+
+    function test_SettleTrade_Buy() public {
+        uint256 marketId = _setupMarketWithDeposit();
+
+        // Operator settles a buy trade: alice buys 100 shares of outcome 1 at 0.6 USDC each
+        vm.prank(operator);
+        market.settleTrade(marketId, alice, 1, 100e6, 60e6, true);
+
+        (uint256 shares, uint256 cost) = market.positions(marketId, alice, 1);
+        assertEq(shares, 100e6);
+        assertEq(cost, 60e6);
+        assertEq(market.balances(alice), 940e6); // 1000 - 60
+    }
+
+    function test_SettleTrade_Sell() public {
+        uint256 marketId = _setupMarketWithDeposit();
+
+        // First buy
+        vm.prank(operator);
+        market.settleTrade(marketId, alice, 1, 100e6, 60e6, true);
+
+        // Then sell half
+        vm.prank(operator);
+        market.settleTrade(marketId, alice, 1, 50e6, 35e6, false);
+
+        (uint256 shares,) = market.positions(marketId, alice, 1);
+        assertEq(shares, 50e6);
+        assertEq(market.balances(alice), 975e6); // 940 + 35
+    }
+
+    function test_SettleTrade_OnlyOperator() public {
+        uint256 marketId = _setupMarketWithDeposit();
+
+        vm.prank(alice);
+        vm.expectRevert("PredictionMarket: caller is not operator");
+        market.settleTrade(marketId, alice, 1, 100e6, 60e6, true);
+    }
+
+    function test_SettleTrade_InsufficientBalance() public {
+        uint256 marketId = _setupMarketWithDeposit();
+
+        vm.prank(operator);
+        vm.expectRevert("PredictionMarket: insufficient balance");
+        market.settleTrade(marketId, alice, 1, 100e6, 2000e6, true);
+    }
 }

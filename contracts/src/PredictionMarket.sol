@@ -107,4 +107,37 @@ contract PredictionMarket is Ownable, ReentrancyGuard, Pausable {
         emit MarketCreated(marketCount, question, outcomeCount, endTime);
         return marketCount;
     }
+
+    function settleTrade(
+        uint256 marketId,
+        address user,
+        uint8 outcome,
+        uint256 shares,
+        uint256 cost,
+        bool isBuy
+    ) external onlyOperator nonReentrant whenNotPaused {
+        Market storage m = markets[marketId];
+        require(m.status == MarketStatus.Active, "PredictionMarket: market not active");
+        require(outcome > 0 && outcome <= m.outcomeCount, "PredictionMarket: invalid outcome");
+
+        Position storage pos = positions[marketId][user][outcome];
+
+        if (isBuy) {
+            require(balances[user] >= cost, "PredictionMarket: insufficient balance");
+            balances[user] -= cost;
+            pos.shares += shares;
+            pos.cost += cost;
+            m.totalShares += shares;
+        } else {
+            require(pos.shares >= shares, "PredictionMarket: insufficient shares");
+            pos.shares -= shares;
+            // Proportionally reduce cost basis
+            uint256 costReduction = (pos.cost * shares) / (pos.shares + shares);
+            pos.cost -= costReduction;
+            balances[user] += cost;
+            m.totalShares -= shares;
+        }
+
+        emit TradeSettled(marketId, user, outcome, shares, cost, isBuy);
+    }
 }
