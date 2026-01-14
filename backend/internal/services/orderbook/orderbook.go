@@ -1,8 +1,10 @@
 package orderbook
 
 import (
+	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/prediction-market/backend/internal/models"
 	"github.com/shopspring/decimal"
@@ -108,7 +110,10 @@ func (m *OrderBookManager) GetDepth(marketID uint64, outcome uint8) *OrderBook {
 			Quantity: level.Quantity,
 			Orders:   make([]*models.Order, len(level.Orders)),
 		}
-		copy(copyBook.Buys[i].Orders, level.Orders)
+		for k, order := range level.Orders {
+			orderCopy := *order // Copy the struct
+			copyBook.Buys[i].Orders[k] = &orderCopy
+		}
 	}
 
 	for i, level := range book.Sells {
@@ -117,14 +122,27 @@ func (m *OrderBookManager) GetDepth(marketID uint64, outcome uint8) *OrderBook {
 			Quantity: level.Quantity,
 			Orders:   make([]*models.Order, len(level.Orders)),
 		}
-		copy(copyBook.Sells[i].Orders, level.Orders)
+		for k, order := range level.Orders {
+			orderCopy := *order // Copy the struct
+			copyBook.Sells[i].Orders[k] = &orderCopy
+		}
 	}
 
 	return copyBook
 }
 
 // AddOrder adds an order to the order book and performs matching
-func (ob *OrderBook) AddOrder(order *models.Order) *MatchResult {
+func (ob *OrderBook) AddOrder(order *models.Order) (*MatchResult, error) {
+	if order == nil {
+		return nil, errors.New("order cannot be nil")
+	}
+	if order.Quantity.LessThanOrEqual(decimal.Zero) {
+		return nil, errors.New("quantity must be positive")
+	}
+	if order.Price.LessThanOrEqual(decimal.Zero) {
+		return nil, errors.New("price must be positive")
+	}
+
 	ob.mu.Lock()
 	defer ob.mu.Unlock()
 
@@ -146,7 +164,7 @@ func (ob *OrderBook) AddOrder(order *models.Order) *MatchResult {
 		ob.addToBook(order)
 	}
 
-	return result
+	return result, nil
 }
 
 // matchBuyOrder matches a buy order against sell levels
@@ -178,6 +196,7 @@ func (ob *OrderBook) matchBuyOrder(order *models.Order, result *MatchResult) {
 				Outcome:      ob.Outcome,
 				Price:        makerOrder.Price,
 				Quantity:     tradeQty,
+				CreatedAt:    time.Now(),
 			}
 			result.Trades = append(result.Trades, trade)
 
@@ -240,6 +259,7 @@ func (ob *OrderBook) matchSellOrder(order *models.Order, result *MatchResult) {
 				Outcome:      ob.Outcome,
 				Price:        makerOrder.Price,
 				Quantity:     tradeQty,
+				CreatedAt:    time.Now(),
 			}
 			result.Trades = append(result.Trades, trade)
 
