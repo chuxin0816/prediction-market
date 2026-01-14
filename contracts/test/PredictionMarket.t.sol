@@ -170,4 +170,72 @@ contract PredictionMarketTest is Test {
         vm.expectRevert("PredictionMarket: insufficient balance");
         market.settleTrade(marketId, alice, 1, 100e6, 2000e6, true);
     }
+
+    function test_ResolveMarket() public {
+        uint256 marketId = _setupMarketWithDeposit();
+
+        // Warp to after resolution time
+        vm.warp(block.timestamp + 3 days);
+
+        vm.prank(owner);
+        market.resolveMarket(marketId, 1);
+
+        (,,,, uint8 resolvedOutcome, PredictionMarket.MarketStatus status,) = market.markets(marketId);
+        assertEq(resolvedOutcome, 1);
+        assertEq(uint8(status), uint8(PredictionMarket.MarketStatus.Resolved));
+    }
+
+    function test_ResolveMarket_OnlyOwner() public {
+        uint256 marketId = _setupMarketWithDeposit();
+        vm.warp(block.timestamp + 3 days);
+
+        vm.prank(alice);
+        vm.expectRevert();
+        market.resolveMarket(marketId, 1);
+    }
+
+    function test_ClaimWinnings() public {
+        uint256 marketId = _setupMarketWithDeposit();
+
+        // Alice buys outcome 1
+        vm.prank(operator);
+        market.settleTrade(marketId, alice, 1, 100e6, 60e6, true);
+
+        // Resolve market with outcome 1 winning
+        vm.warp(block.timestamp + 3 days);
+        vm.prank(owner);
+        market.resolveMarket(marketId, 1);
+
+        // Alice claims winnings
+        uint256 balanceBefore = market.balances(alice);
+        vm.prank(alice);
+        market.claimWinnings(marketId);
+
+        // Alice should receive 100 USDC (1 USDC per share)
+        assertEq(market.balances(alice), balanceBefore + 100e6);
+
+        // Position should be cleared
+        (uint256 shares,) = market.positions(marketId, alice, 1);
+        assertEq(shares, 0);
+    }
+
+    function test_ClaimWinnings_LosingPosition() public {
+        uint256 marketId = _setupMarketWithDeposit();
+
+        // Alice buys outcome 1
+        vm.prank(operator);
+        market.settleTrade(marketId, alice, 1, 100e6, 60e6, true);
+
+        // Resolve market with outcome 2 winning (alice loses)
+        vm.warp(block.timestamp + 3 days);
+        vm.prank(owner);
+        market.resolveMarket(marketId, 2);
+
+        // Alice tries to claim - should get nothing
+        uint256 balanceBefore = market.balances(alice);
+        vm.prank(alice);
+        market.claimWinnings(marketId);
+
+        assertEq(market.balances(alice), balanceBefore); // No change
+    }
 }

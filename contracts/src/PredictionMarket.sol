@@ -140,4 +140,41 @@ contract PredictionMarket is Ownable, ReentrancyGuard, Pausable {
 
         emit TradeSettled(marketId, user, outcome, shares, cost, isBuy);
     }
+
+    function resolveMarket(uint256 marketId, uint8 outcome) external onlyOwner {
+        Market storage m = markets[marketId];
+        require(m.status == MarketStatus.Active, "PredictionMarket: market not active");
+        require(block.timestamp >= m.resolutionTime, "PredictionMarket: too early to resolve");
+        require(outcome > 0 && outcome <= m.outcomeCount, "PredictionMarket: invalid outcome");
+
+        m.resolvedOutcome = outcome;
+        m.status = MarketStatus.Resolved;
+
+        emit MarketResolved(marketId, outcome);
+    }
+
+    function claimWinnings(uint256 marketId) external nonReentrant {
+        Market storage m = markets[marketId];
+        require(m.status == MarketStatus.Resolved, "PredictionMarket: market not resolved");
+
+        uint8 winningOutcome = m.resolvedOutcome;
+        Position storage pos = positions[marketId][msg.sender][winningOutcome];
+
+        uint256 winnings = pos.shares; // 1 USDC per winning share
+        if (winnings > 0) {
+            pos.shares = 0;
+            pos.cost = 0;
+            balances[msg.sender] += winnings;
+            emit WinningsClaimed(marketId, msg.sender, winnings);
+        }
+
+        // Clear losing positions (no payout)
+        for (uint8 i = 1; i <= m.outcomeCount; i++) {
+            if (i != winningOutcome) {
+                Position storage losingPos = positions[marketId][msg.sender][i];
+                losingPos.shares = 0;
+                losingPos.cost = 0;
+            }
+        }
+    }
 }
