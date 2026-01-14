@@ -67,4 +67,19 @@ contract PredictionMarket is Ownable, ReentrancyGuard, Pausable {
     function unpause() external onlyOwner {
         _unpause();
     }
+
+    function deposit(uint256 amount) external nonReentrant whenNotPaused {
+        require(amount > 0, "PredictionMarket: amount must be greater than 0");
+        usdc.safeTransferFrom(msg.sender, address(this), amount);
+        balances[msg.sender] += amount;
+        emit Deposited(msg.sender, amount);
+    }
+
+    function withdraw(uint256 amount) external nonReentrant whenNotPaused {
+        require(amount > 0, "PredictionMarket: amount must be greater than 0");
+        require(balances[msg.sender] >= amount, "PredictionMarket: insufficient balance");
+        balances[msg.sender] -= amount;
+        usdc.safeTransfer(msg.sender, amount);
+        emit Withdrawn(msg.sender, amount);
+    }
 }

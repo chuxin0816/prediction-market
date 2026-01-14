@@ -37,4 +37,42 @@ contract PredictionMarketTest is Test {
         vm.expectRevert();
         market.setOperator(alice);
     }
+
+    function test_Deposit() public {
+        vm.startPrank(alice);
+        usdc.approve(address(market), 1000e6);
+        market.deposit(1000e6);
+        vm.stopPrank();
+
+        assertEq(market.balances(alice), 1000e6);
+        assertEq(usdc.balanceOf(address(market)), 1000e6);
+    }
+
+    function test_Deposit_ZeroAmount() public {
+        vm.startPrank(alice);
+        usdc.approve(address(market), 1000e6);
+        vm.expectRevert("PredictionMarket: amount must be greater than 0");
+        market.deposit(0);
+        vm.stopPrank();
+    }
+
+    function test_Withdraw() public {
+        vm.startPrank(alice);
+        usdc.approve(address(market), 1000e6);
+        market.deposit(1000e6);
+        market.withdraw(500e6);
+        vm.stopPrank();
+
+        assertEq(market.balances(alice), 500e6);
+        assertEq(usdc.balanceOf(alice), 9500e6);
+    }
+
+    function test_Withdraw_InsufficientBalance() public {
+        vm.startPrank(alice);
+        usdc.approve(address(market), 1000e6);
+        market.deposit(1000e6);
+        vm.expectRevert("PredictionMarket: insufficient balance");
+        market.withdraw(2000e6);
+        vm.stopPrank();
+    }
 }
