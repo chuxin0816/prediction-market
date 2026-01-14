@@ -44,9 +44,14 @@ type PriceLevelResponse struct {
 }
 
 func (h *OrderHandler) PlaceOrder(c *gin.Context) {
-	userAddress, exists := c.Get("user_address")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+	userAddress, ok := c.Get("user_address")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	userAddr, ok := userAddress.(string)
+	if !ok || userAddr == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user address"})
 		return
 	}
 
@@ -80,30 +85,7 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 		return
 	}
 
-	userAddr := userAddress.(string)
 	side := models.OrderSide(req.Side)
-
-	// Calculate required balance for buy orders (price * quantity)
-	requiredBalance := decimal.Zero
-	if side == models.OrderSideBuy {
-		requiredBalance = req.Price.Mul(req.Quantity)
-
-		// Check user balance
-		var balance models.UserBalance
-		if err := h.db.First(&balance, "user_address = ?", userAddr).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "insufficient balance"})
-				return
-			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		if balance.Available.LessThan(requiredBalance) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "insufficient balance"})
-			return
-		}
-	}
 
 	// Create order with status Open
 	order := &models.Order{
@@ -117,29 +99,38 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 		Status:         models.OrderStatusOpen,
 	}
 
-	// Start DB transaction
+	// Start DB transaction FIRST
 	tx := h.db.Begin()
 	if tx.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start transaction"})
 		return
 	}
 
-	// Lock balance for buy orders (move from Available to Locked)
+	// Lock and check balance inside transaction for buy orders
 	if side == models.OrderSideBuy {
-		result := tx.Model(&models.UserBalance{}).
-			Where("user_address = ? AND available >= ?", userAddr, requiredBalance).
-			Updates(map[string]interface{}{
-				"available": gorm.Expr("available - ?", requiredBalance),
-				"locked":    gorm.Expr("locked + ?", requiredBalance),
-			})
-		if result.Error != nil {
+		requiredBalance := req.Price.Mul(req.Quantity)
+
+		// Lock the balance row with SELECT FOR UPDATE
+		var balance models.UserBalance
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			FirstOrCreate(&balance, models.UserBalance{UserAddress: userAddr}).Error; err != nil {
 			tx.Rollback()
-			c.JSON(http.StatusInternalServerError, gin.H{"error": result.Error.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to lock balance"})
 			return
 		}
-		if result.RowsAffected == 0 {
+
+		if balance.Available.LessThan(requiredBalance) {
 			tx.Rollback()
 			c.JSON(http.StatusBadRequest, gin.H{"error": "insufficient balance"})
+			return
+		}
+
+		// Lock balance (move from Available to Locked)
+		balance.Available = balance.Available.Sub(requiredBalance)
+		balance.Locked = balance.Locked.Add(requiredBalance)
+		if err := tx.Save(&balance).Error; err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 	}
@@ -164,6 +155,8 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 	for i := range matchResult.Trades {
 		matchResult.Trades[i].TakerOrderID = order.ID
 		if err := tx.Create(&matchResult.Trades[i]).Error; err != nil {
+			// Rollback orderbook changes on DB failure
+			ob.RemoveOrder(order)
 			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -178,6 +171,8 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 				"filled_quantity": makerOrder.FilledQuantity,
 				"status":          makerOrder.Status,
 			}).Error; err != nil {
+			// Rollback orderbook changes on DB failure
+			ob.RemoveOrder(order)
 			tx.Rollback()
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -191,6 +186,8 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 			"filled_quantity": order.FilledQuantity,
 			"status":          order.Status,
 		}).Error; err != nil {
+		// Rollback orderbook changes on DB failure
+		ob.RemoveOrder(order)
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -198,6 +195,8 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 
 	// Commit transaction
 	if err := tx.Commit().Error; err != nil {
+		// Rollback orderbook changes on commit failure
+		ob.RemoveOrder(order)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -209,9 +208,14 @@ func (h *OrderHandler) PlaceOrder(c *gin.Context) {
 }
 
 func (h *OrderHandler) CancelOrder(c *gin.Context) {
-	userAddress, exists := c.Get("user_address")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+	userAddress, ok := c.Get("user_address")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	userAddr, ok := userAddress.(string)
+	if !ok || userAddr == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user address"})
 		return
 	}
 
@@ -220,8 +224,6 @@ func (h *OrderHandler) CancelOrder(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid order id"})
 		return
 	}
-
-	userAddr := userAddress.(string)
 
 	// Get order and verify ownership
 	var order models.Order
@@ -246,10 +248,6 @@ func (h *OrderHandler) CancelOrder(c *gin.Context) {
 		return
 	}
 
-	// Remove from orderbook
-	ob := h.obm.GetOrCreate(order.MarketID, order.Outcome)
-	ob.RemoveOrder(&order)
-
 	// Calculate amount to unlock (remaining quantity * price)
 	unlockAmount := order.RemainingQuantity().Mul(order.Price)
 
@@ -257,6 +255,14 @@ func (h *OrderHandler) CancelOrder(c *gin.Context) {
 	tx := h.db.Begin()
 	if tx.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start transaction"})
+		return
+	}
+
+	// Update order status first
+	order.Status = models.OrderStatusCancelled
+	if err := tx.Save(&order).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -275,30 +281,30 @@ func (h *OrderHandler) CancelOrder(c *gin.Context) {
 		}
 	}
 
-	// Set status to Cancelled
-	order.Status = models.OrderStatusCancelled
-	if err := tx.Save(&order).Error; err != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
+	// Commit transaction
 	if err := tx.Commit().Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Only AFTER commit succeeds, remove from orderbook
+	ob := h.obm.GetOrCreate(order.MarketID, order.Outcome)
+	ob.RemoveOrder(&order)
+
 	c.JSON(http.StatusOK, order)
 }
 
 func (h *OrderHandler) GetUserOrders(c *gin.Context) {
-	userAddress, exists := c.Get("user_address")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+	userAddress, ok := c.Get("user_address")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-
-	userAddr := userAddress.(string)
+	userAddr, ok := userAddress.(string)
+	if !ok || userAddr == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user address"})
+		return
+	}
 
 	var orders []models.Order
 	query := h.db.Where("user_address = ?", userAddr)
