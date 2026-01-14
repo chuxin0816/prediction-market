@@ -75,4 +75,42 @@ contract PredictionMarketTest is Test {
         market.withdraw(2000e6);
         vm.stopPrank();
     }
+
+    function test_CreateMarket() public {
+        vm.prank(owner);
+        market.createMarket("Will BTC reach 100k?", 2, block.timestamp + 1 days, block.timestamp + 2 days);
+
+        assertEq(market.marketCount(), 1);
+
+        (
+            string memory question,
+            uint8 outcomeCount,
+            uint256 endTime,
+            uint256 resolutionTime,
+            uint8 resolvedOutcome,
+            PredictionMarket.MarketStatus status,
+        ) = market.markets(1);
+
+        assertEq(question, "Will BTC reach 100k?");
+        assertEq(outcomeCount, 2);
+        assertEq(uint8(status), uint8(PredictionMarket.MarketStatus.Active));
+    }
+
+    function test_CreateMarket_OnlyOwner() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        market.createMarket("Test?", 2, block.timestamp + 1 days, block.timestamp + 2 days);
+    }
+
+    function test_CreateMarket_InvalidOutcomeCount() public {
+        vm.prank(owner);
+        vm.expectRevert("PredictionMarket: outcome count must be >= 2");
+        market.createMarket("Test?", 1, block.timestamp + 1 days, block.timestamp + 2 days);
+    }
+
+    function test_CreateMarket_InvalidEndTime() public {
+        vm.prank(owner);
+        vm.expectRevert("PredictionMarket: end time must be in future");
+        market.createMarket("Test?", 2, block.timestamp - 1, block.timestamp + 2 days);
+    }
 }

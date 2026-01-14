@@ -82,4 +82,29 @@ contract PredictionMarket is Ownable, ReentrancyGuard, Pausable {
         usdc.safeTransfer(msg.sender, amount);
         emit Withdrawn(msg.sender, amount);
     }
+
+    function createMarket(
+        string calldata question,
+        uint8 outcomeCount,
+        uint256 endTime,
+        uint256 resolutionTime
+    ) external onlyOwner returns (uint256) {
+        require(outcomeCount >= 2, "PredictionMarket: outcome count must be >= 2");
+        require(endTime > block.timestamp, "PredictionMarket: end time must be in future");
+        require(resolutionTime > endTime, "PredictionMarket: resolution time must be after end time");
+
+        marketCount++;
+        markets[marketCount] = Market({
+            question: question,
+            outcomeCount: outcomeCount,
+            endTime: endTime,
+            resolutionTime: resolutionTime,
+            resolvedOutcome: 0,
+            status: MarketStatus.Active,
+            totalShares: 0
+        });
+
+        emit MarketCreated(marketCount, question, outcomeCount, endTime);
+        return marketCount;
+    }
 }
