@@ -29,6 +29,12 @@ type CreateMarketRequest struct {
 }
 
 func (h *AdminHandler) CreateMarket(c *gin.Context) {
+	isAdmin, _ := c.Get("admin")
+	if isAdmin != true {
+		c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+		return
+	}
+
 	var req CreateMarketRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -45,7 +51,11 @@ func (h *AdminHandler) CreateMarket(c *gin.Context) {
 		return
 	}
 
-	outcomesJSON, _ := json.Marshal(req.Outcomes)
+	outcomesJSON, err := json.Marshal(req.Outcomes)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process outcomes"})
+		return
+	}
 
 	market := models.Market{
 		Question:       req.Question,
@@ -69,6 +79,12 @@ type ResolveMarketRequest struct {
 }
 
 func (h *AdminHandler) ResolveMarket(c *gin.Context) {
+	isAdmin, _ := c.Get("admin")
+	if isAdmin != true {
+		c.JSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+		return
+	}
+
 	marketID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid market id"})
@@ -93,7 +109,10 @@ func (h *AdminHandler) ResolveMarket(c *gin.Context) {
 	}
 
 	var outcomes []string
-	json.Unmarshal(market.Outcomes, &outcomes)
+	if err := json.Unmarshal(market.Outcomes, &outcomes); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "corrupted market data"})
+		return
+	}
 
 	if int(req.Outcome) < 1 || int(req.Outcome) > len(outcomes) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid outcome"})
