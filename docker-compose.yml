@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: prediction-market-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-prediction}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-prediction123}
+      POSTGRES_DB: ${POSTGRES_DB:-prediction_market}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-prediction}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: prediction-market-backend
+    restart: unless-stopped
+    environment:
+      # Database
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-prediction}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-prediction123}
+      DB_NAME: ${POSTGRES_DB:-prediction_market}
+      # Server
+      SERVER_PORT: 8080
+      # JWT
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      # Ethereum
+      ETH_RPC_URL: ${ETH_RPC_URL:-https://sepolia.infura.io/v3/YOUR_INFURA_KEY}
+      CONTRACT_ADDRESS: ${CONTRACT_ADDRESS}
+      OPERATOR_PRIVATE_KEY: ${OPERATOR_PRIVATE_KEY}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Frontend Web App
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8080/api}
+        VITE_CONTRACT_ADDRESS: ${VITE_CONTRACT_ADDRESS}
+        VITE_USDC_ADDRESS: ${VITE_USDC_ADDRESS}
+    container_name: prediction-market-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
