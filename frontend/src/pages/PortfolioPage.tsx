@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { useAppStore } from '../stores/useAppStore';
+import { DepositWithdraw } from '../components/DepositWithdraw';
 
 export function PortfolioPage() {
   const { address, isConnected } = useAccount();
@@ -27,6 +28,10 @@ export function PortfolioPage() {
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">My Portfolio</h1>
+
+      <div className="mb-6">
+        <DepositWithdraw />
+      </div>
 
       <div className="bg-white rounded-lg shadow">
         <div className="p-4 border-b">
