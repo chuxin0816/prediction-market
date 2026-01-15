@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { marketApi, PriceLevel } from '../services/api';
+import { marketApi } from '../services/api';
+import type { PriceLevel } from '../services/api';
 
 interface OrderBookProps {
   marketId: number;
