@@ -74,7 +74,10 @@ export function useContractBalance(address: `0x${string}` | undefined) {
     abi: PREDICTION_MARKET_ABI,
     functionName: 'balances',
     args: address ? [address] : undefined,
-    query: { enabled: !!address },
+    query: {
+      enabled: !!address,
+      refetchInterval: 3000, // 每3秒自动刷新
+    },
   });
 }
 
@@ -84,7 +87,23 @@ export function useUSDCBalance(address: `0x${string}` | undefined) {
     abi: USDC_ABI,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
-    query: { enabled: !!address },
+    query: {
+      enabled: !!address,
+      refetchInterval: 3000, // 每3秒自动刷新
+    },
+  });
+}
+
+export function useUSDCAllowance(address: `0x${string}` | undefined) {
+  return useReadContract({
+    address: USDC_ADDRESS,
+    abi: USDC_ABI,
+    functionName: 'allowance',
+    args: address ? [address, PREDICTION_MARKET_ADDRESS] : undefined,
+    query: {
+      enabled: !!address,
+      refetchInterval: 3000,
+    },
   });
 }
 

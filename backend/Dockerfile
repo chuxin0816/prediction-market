@@ -1,25 +1,22 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.23 AS builder
 
 WORKDIR /app
 
-# Install dependencies
-RUN apk add --no-cache git
+# Enable automatic toolchain download
+ENV GOTOOLCHAIN=auto
 
-# Copy go mod files
-COPY go.mod go.sum ./
-RUN go mod download
-
-# Copy source code
+# Copy all source files first
 COPY . .
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server
+# Download dependencies and build in a single layer so toolchain persists
+RUN go mod download && \
+    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server
 
 # Final stage
-FROM alpine:latest
+FROM debian:bookworm-slim
 
-RUN apk --no-cache add ca-certificates tzdata
+RUN apt-get update && apt-get install -y ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
