@@ -1,0 +1,30 @@
+# Environment files (contain sensitive data)
+.env
+*.env.local
+
+# Build outputs
+bin/
+dist/
+
+# Logs
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
