@@ -17,6 +17,8 @@ func InitDB(databaseURL string) (*gorm.DB, error) {
 		&Trade{},
 		&UserBalance{},
 		&BalanceLog{},
+		&LiquidityPool{},
+		&UserPosition{},
 	)
 	if err != nil {
 		return nil, err

@@ -7,10 +7,11 @@ import (
 )
 
 type UserBalance struct {
-	UserAddress string          `gorm:"primaryKey;size:42" json:"user_address"`
-	Available   decimal.Decimal `gorm:"not null;type:decimal(20,6);default:0" json:"available"`
-	Locked      decimal.Decimal `gorm:"not null;type:decimal(20,6);default:0" json:"locked"`
-	UpdatedAt   time.Time       `json:"updated_at"`
+	UserAddress   string          `gorm:"primaryKey;size:42" json:"user_address"`
+	Available     decimal.Decimal `gorm:"not null;type:decimal(20,6);default:0" json:"available"`
+	Locked        decimal.Decimal `gorm:"not null;type:decimal(20,6);default:0" json:"locked"`
+	SyncedOnchain decimal.Decimal `gorm:"not null;type:decimal(20,6);default:0" json:"synced_onchain"`
+	UpdatedAt     time.Time       `json:"updated_at"`
 }
 
 type BalanceLog struct {

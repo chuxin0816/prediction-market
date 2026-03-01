@@ -1,5 +1,5 @@
-import { useWriteContract, useReadContract, useWaitForTransactionReceipt } from 'wagmi';
-import { parseUnits, formatUnits } from 'viem';
+import { useWriteContract, useReadContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
+import { parseUnits, formatUnits, maxUint256 } from 'viem';
 
 const PREDICTION_MARKET_ABI = [
   {
@@ -108,64 +108,72 @@ export function useUSDCAllowance(address: `0x${string}` | undefined) {
 }
 
 export function useDeposit() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { writeContractAsync, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const publicClient = usePublicClient();
 
   const deposit = async (amount: string) => {
-    writeContract({
+    const txHash = await writeContractAsync({
       address: PREDICTION_MARKET_ADDRESS,
       abi: PREDICTION_MARKET_ABI,
       functionName: 'deposit',
       args: [parseUnits(amount, 6)],
     });
+    await publicClient!.waitForTransactionReceipt({ hash: txHash, timeout: 120_000 });
   };
 
   return { deposit, isPending, isConfirming, isSuccess, error };
 }
 
 export function useWithdraw() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { writeContractAsync, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const publicClient = usePublicClient();
 
   const withdraw = async (amount: string) => {
-    writeContract({
+    const txHash = await writeContractAsync({
       address: PREDICTION_MARKET_ADDRESS,
       abi: PREDICTION_MARKET_ABI,
       functionName: 'withdraw',
       args: [parseUnits(amount, 6)],
     });
+    await publicClient!.waitForTransactionReceipt({ hash: txHash, timeout: 120_000 });
   };
 
   return { withdraw, isPending, isConfirming, isSuccess, error };
 }
 
 export function useApproveUSDC() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { writeContractAsync, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const publicClient = usePublicClient();
 
-  const approve = async (amount: string) => {
-    writeContract({
+  const approve = async () => {
+    const txHash = await writeContractAsync({
       address: USDC_ADDRESS,
       abi: USDC_ABI,
       functionName: 'approve',
-      args: [PREDICTION_MARKET_ADDRESS, parseUnits(amount, 6)],
+      args: [PREDICTION_MARKET_ADDRESS, maxUint256],
     });
+    await publicClient!.waitForTransactionReceipt({ hash: txHash, timeout: 120_000 });
   };
 
   return { approve, isPending, isConfirming, isSuccess, error };
 }
 
 export function useMintUSDC() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const { writeContractAsync, data: hash, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const publicClient = usePublicClient();
 
   const mint = async (to: `0x${string}`, amount: string) => {
-    writeContract({
+    const txHash = await writeContractAsync({
       address: USDC_ADDRESS,
       abi: USDC_ABI,
       functionName: 'mint',
       args: [to, parseUnits(amount, 6)],
     });
+    await publicClient!.waitForTransactionReceipt({ hash: txHash, timeout: 120_000 });
   };
 
   return { mint, isPending, isConfirming, isSuccess, error };

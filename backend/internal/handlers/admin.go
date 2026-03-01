@@ -66,7 +66,53 @@ func (h *AdminHandler) CreateMarket(c *gin.Context) {
 		Status:         models.MarketStatusActive,
 	}
 
-	if err := h.db.Create(&market).Error; err != nil {
+	tx := h.db.Begin()
+	if tx.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start transaction"})
+		return
+	}
+
+	if err := tx.Create(&market).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Initialize AMM liquidity pool with equal reserves
+	numOutcomes := len(req.Outcomes)
+	initialReserve := "100"
+	reserveStrings := make([]string, numOutcomes)
+	for i := range reserveStrings {
+		reserveStrings[i] = initialReserve
+	}
+	reservesJSON, err := json.Marshal(reserveStrings)
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to marshal reserves"})
+		return
+	}
+
+	// k = 100^numOutcomes
+	k := "1"
+	hundredDec, _ := strconv.ParseInt(initialReserve, 10, 64)
+	kVal := int64(1)
+	for i := 0; i < numOutcomes; i++ {
+		kVal *= hundredDec
+	}
+	k = strconv.FormatInt(kVal, 10)
+
+	pool := models.LiquidityPool{
+		MarketID:        market.ID,
+		OutcomeReserves: datatypes.JSON(reservesJSON),
+		K:               k,
+	}
+	if err := tx.Create(&pool).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create liquidity pool: " + err.Error()})
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

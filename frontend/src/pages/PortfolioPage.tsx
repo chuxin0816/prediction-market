@@ -1,22 +1,38 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAccount } from 'wagmi';
 import { formatUnits } from 'viem';
 import { useAppStore } from '../stores/useAppStore';
 import { DepositWithdraw } from '../components/DepositWithdraw';
-import { useContractBalance, useUSDCBalance } from '../hooks/useContract';
+import { useUSDCBalance } from '../hooks/useContract';
+import { balanceApi } from '../services/api';
 import { AnimatedNumber } from '../components/AnimatedNumber';
 
 export function PortfolioPage() {
   const { address, isConnected } = useAccount();
   const { userOrders, fetchUserOrders, cancelOrder } = useAppStore();
-  const { data: contractBalance } = useContractBalance(address);
   const { data: usdcBalance } = useUSDCBalance(address);
+  const [tradingBalance, setTradingBalance] = useState(0);
+
+  const fetchTradingBalance = useCallback(async () => {
+    if (!address) return;
+    try {
+      const res = await balanceApi.getBalance(address);
+      setTradingBalance(Number(res.data.available));
+    } catch {
+      // Balance not available
+    }
+  }, [address]);
 
   useEffect(() => {
-    if (address) {
-      fetchUserOrders(address);
-    }
-  }, [address, fetchUserOrders]);
+    if (!address) return;
+    // Sync on-chain balance to DB on page load, then fetch DB balance
+    balanceApi.syncBalance(address).finally(() => {
+      fetchTradingBalance();
+    });
+    fetchUserOrders(address);
+    const interval = setInterval(fetchTradingBalance, 5000);
+    return () => clearInterval(interval);
+  }, [address, fetchUserOrders, fetchTradingBalance]);
 
   if (!isConnected) {
     return (
@@ -38,7 +54,6 @@ export function PortfolioPage() {
     (o) => o.status === 'open' || o.status === 'partial'
   );
 
-  const totalBalance = contractBalance ? Number(formatUnits(contractBalance, 6)) : 0;
   const walletBalance = usdcBalance ? Number(formatUnits(usdcBalance, 6)) : 0;
 
   return (
@@ -64,7 +79,7 @@ export function PortfolioPage() {
             </div>
           </div>
           <div className="text-3xl font-bold">
-            <AnimatedNumber value={totalBalance + walletBalance} prefix="$" className="text-white" />
+            <AnimatedNumber value={tradingBalance + walletBalance} prefix="$" className="text-white" />
           </div>
           <div className="text-blue-100 text-sm mt-1">USDC</div>
         </div>
@@ -80,7 +95,7 @@ export function PortfolioPage() {
             </div>
           </div>
           <div className="text-3xl font-bold text-gray-900">
-            <AnimatedNumber value={totalBalance} prefix="$" />
+            <AnimatedNumber value={tradingBalance} prefix="$" />
           </div>
           <div className="text-gray-400 text-sm mt-1">Available for trading</div>
         </div>

@@ -75,4 +75,100 @@ export const orderApi = {
     }),
 };
 
+export const adminApi = {
+  createMarket: (
+    data: {
+      question: string;
+      description: string;
+      outcomes: string[];
+      end_time: string;
+      resolution_time: string;
+    },
+    token: string,
+  ) =>
+    api.post<Market>('/admin/markets', data, {
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+  resolveMarket: (id: number, outcome: number, token: string) =>
+    api.post(
+      `/admin/markets/${id}/resolve`,
+      { outcome },
+      { headers: { Authorization: `Bearer ${token}` } },
+    ),
+};
+
+export interface AmmPrices {
+  prices: number[];
+  pool_reserves: string[];
+}
+
+export interface AmmQuote {
+  shares_out?: number;
+  usdc_out?: number;
+  avg_price: number;
+  price_impact: number;
+  new_prices: number[];
+}
+
+export interface AmmTradeResult {
+  shares_received?: number;
+  usdc_received?: number;
+  avg_price: number;
+  new_prices: number[];
+}
+
+export interface UserPosition {
+  id: number;
+  user_address: string;
+  market_id: number;
+  outcome: number;
+  shares: string;
+}
+
+export const ammApi = {
+  getPrices: (marketId: number) =>
+    api.get<AmmPrices>('/amm/prices', { params: { market_id: marketId } }),
+
+  getQuote: (params: {
+    market_id: number;
+    outcome: number;
+    amount: number;
+    side: 'buy' | 'sell';
+  }) =>
+    api.get<AmmQuote>('/amm/quote', { params }),
+
+  buy: (
+    data: { market_id: number; outcome: number; amount: string },
+    walletAddress: string,
+  ) =>
+    api.post<AmmTradeResult>('/amm/buy', data, {
+      headers: { 'X-Wallet-Address': walletAddress },
+    }),
+
+  sell: (
+    data: { market_id: number; outcome: number; shares: string },
+    walletAddress: string,
+  ) =>
+    api.post<AmmTradeResult>('/amm/sell', data, {
+      headers: { 'X-Wallet-Address': walletAddress },
+    }),
+
+  getUserPositions: (walletAddress: string, marketId?: number) =>
+    api.get<UserPosition[]>('/user/positions', {
+      params: marketId != null ? { market_id: marketId } : undefined,
+      headers: { 'X-Wallet-Address': walletAddress },
+    }),
+};
+
+export const balanceApi = {
+  getBalance: (walletAddress: string) =>
+    api.get<{ available: string }>('/user/balance', {
+      headers: { 'X-Wallet-Address': walletAddress },
+    }),
+  syncBalance: (walletAddress: string) =>
+    api.post('/user/sync-balance', null, {
+      headers: { 'X-Wallet-Address': walletAddress },
+    }),
+};
+
 export default api;

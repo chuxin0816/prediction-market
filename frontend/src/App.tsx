@@ -3,6 +3,7 @@ import { WalletButton } from './components/WalletButton';
 import { HomePage } from './pages/HomePage';
 import { MarketPage } from './pages/MarketPage';
 import { PortfolioPage } from './pages/PortfolioPage';
+import { AdminPage } from './pages/AdminPage';
 
 function App() {
   return (
@@ -29,6 +30,7 @@ function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/market/:id" element={<MarketPage />} />
           <Route path="/portfolio" element={<PortfolioPage />} />
+          <Route path="/admin" element={<AdminPage />} />
         </Routes>
       </main>
     </div>

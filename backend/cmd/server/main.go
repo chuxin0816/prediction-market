@@ -30,6 +30,8 @@ func main() {
 	marketHandler := handlers.NewMarketHandler(db)
 	orderHandler := handlers.NewOrderHandler(db, obm)
 	adminHandler := handlers.NewAdminHandler(db)
+	ammHandler := handlers.NewAMMHandler(db)
+	balanceHandler := handlers.NewBalanceHandler(db, cfg.EthRPCURL, cfg.ContractAddress)
 
 	r := gin.Default()
 
@@ -58,6 +60,13 @@ func main() {
 		api.GET("/markets/:id/orderbook", orderHandler.GetOrderBook)
 	}
 
+	// AMM API (public read endpoints)
+	ammPublic := r.Group("/api/amm")
+	{
+		ammPublic.GET("/prices", ammHandler.GetPrices)
+		ammPublic.GET("/quote", ammHandler.GetQuote)
+	}
+
 	// User API (requires wallet)
 	user := r.Group("/api")
 	user.Use(middleware.WalletAuth())
@@ -65,6 +74,17 @@ func main() {
 		user.POST("/orders", orderHandler.PlaceOrder)
 		user.DELETE("/orders/:id", orderHandler.CancelOrder)
 		user.GET("/user/orders", orderHandler.GetUserOrders)
+		user.GET("/user/positions", ammHandler.GetPositions)
+		user.GET("/user/balance", balanceHandler.GetBalance)
+		user.POST("/user/sync-balance", balanceHandler.SyncBalance)
+	}
+
+	// AMM API (requires wallet for trading)
+	ammAuth := r.Group("/api/amm")
+	ammAuth.Use(middleware.WalletAuth())
+	{
+		ammAuth.POST("/buy", ammHandler.Buy)
+		ammAuth.POST("/sell", ammHandler.Sell)
 	}
 
 	// Admin API (requires JWT)

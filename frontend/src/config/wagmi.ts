@@ -37,11 +37,16 @@ const connectors = connectorsForWallets(
   }
 );
 
+// 使用自定义 RPC 或回退到公共节点
+// 推荐在 .env.local 中设置 VITE_RPC_URL（Alchemy/Infura 免费 tier 即可）
+// 例如: VITE_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
+const rpcUrl = import.meta.env.VITE_RPC_URL as string | undefined;
+
 export const config = createConfig({
   connectors,
   chains: [sepolia],
   transports: {
-    [sepolia.id]: http(),
+    [sepolia.id]: http(rpcUrl),
   },
   ssr: false,
 });

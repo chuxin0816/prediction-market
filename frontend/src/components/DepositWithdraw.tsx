@@ -10,6 +10,7 @@ import {
   useApproveUSDC,
   useMintUSDC,
 } from '../hooks/useContract';
+import { balanceApi } from '../services/api';
 
 export function DepositWithdraw() {
   const { address, isConnected } = useAccount();
@@ -42,19 +43,25 @@ export function DepositWithdraw() {
     }
 
     try {
-      // 只有当 allowance 不足时才需要 approve
+      // 只有当 allowance 不足时才需要 approve（一次性授权最大额度）
       if (currentAllowance < depositAmount) {
-        await approve(amount);
-        // 等待 allowance 更新
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        refetchAllowance();
+        await approve();
+        await refetchAllowance();
       }
       await deposit(amount);
       refetchContract();
       refetchUSDC();
       refetchAllowance();
-    } catch (err) {
-      setError('交易失败，请重试');
+      if (address) await balanceApi.syncBalance(address).catch(() => {});
+    } catch (err: any) {
+      const msg = err?.shortMessage || err?.message || '';
+      if (msg.includes('User rejected') || msg.includes('user rejected')) {
+        setError('你取消了交易');
+      } else if (msg.includes('timeout') || msg.includes('Timeout')) {
+        setError('交易确认超时，请检查钱包中的交易状态后重试');
+      } else {
+        setError(`交易失败: ${msg || '请重试'}`);
+      }
     }
   };
 
@@ -72,8 +79,16 @@ export function DepositWithdraw() {
       await withdraw(amount);
       refetchContract();
       refetchUSDC();
-    } catch (err) {
-      setError('交易失败，请重试');
+      if (address) await balanceApi.syncBalance(address).catch(() => {});
+    } catch (err: any) {
+      const msg = err?.shortMessage || err?.message || '';
+      if (msg.includes('User rejected') || msg.includes('user rejected')) {
+        setError('你取消了交易');
+      } else if (msg.includes('timeout') || msg.includes('Timeout')) {
+        setError('交易确认超时，请检查钱包中的交易状态后重试');
+      } else {
+        setError(`交易失败: ${msg || '请重试'}`);
+      }
     }
   };
 
